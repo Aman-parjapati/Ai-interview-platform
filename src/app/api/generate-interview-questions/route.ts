@@ -1,87 +1,66 @@
 import { NextResponse } from "next/server";
-import {
-  SYSTEM_PROMPT,
-  generateQuestionsPrompt,
-} from "@/lib/prompts/generate-questions";
-import { logger } from "@/lib/logger";
-
-export const maxDuration = 60;
-
-// ✅ Correct HF router endpoint
-const HF_MODEL =
-  "https://router.huggingface.co/hf-inference/models/google/flan-t5-large";
 
 export async function POST(req: Request) {
-  logger.info("generate-interview-questions (HF) request received");
+  console.log("[INFO] generate-interview-questions (Groq) request received");
 
   try {
+    if (!process.env.GROQ_API_KEY) {
+      throw new Error("GROQ_API_KEY missing");
+    }
+
     const body = await req.json();
 
-    if (!process.env.HF_API_KEY) {
-      throw new Error("HF_API_KEY missing in environment variables");
-    }
-
     const prompt = `
-${SYSTEM_PROMPT}
+You are an AI interviewer.
 
-${generateQuestionsPrompt(body)}
+Generate ${body.numberOfQuestions || 5} interview questions for a ${
+      body.role || "software"
+    } role.
 
-Return ONLY valid JSON.
+Objective:
+${body.objective || "Assess candidate skills"}
+
+Return ONLY a numbered list of questions.
 `;
 
-    const response = await fetch(HF_MODEL, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.HF_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        inputs: prompt,
-        parameters: {
-          max_new_tokens: 300,
-          temperature: 0.7,
+    const response = await fetch(
+      "https://api.groq.com/openai/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+          "Content-Type": "application/json",
         },
-      }),
-    });
+        body: JSON.stringify({
+          model: "llama-3.1-8b-instant",
+          messages: [{ role: "user", content: prompt }],
+          temperature: 0.7,
+          max_tokens: 400,
+        }),
+      }
+    );
 
-    // 🔥 IMPORTANT: read as TEXT first
-    const rawText = await response.text();
+    const data = await response.json();
 
     if (!response.ok) {
-      throw new Error(`HF ERROR ${response.status}: ${rawText}`);
+      throw new Error(data?.error?.message || "Groq error");
     }
 
-    // HF usually returns JSON array, but not guaranteed
-    let parsed;
-    try {
-      parsed = JSON.parse(rawText);
-    } catch {
-      // fallback if model returns plain text
-      parsed = rawText;
+    const text =
+      data?.choices?.[0]?.message?.content ||
+      data?.choices?.[0]?.delta?.content ||
+      "";
+
+    if (!text.trim()) {
+      throw new Error("Empty AI response");
     }
 
-    const content =
-      Array.isArray(parsed) && parsed[0]?.generated_text
-        ? parsed[0].generated_text
-        : parsed;
-
-    logger.info("Interview questions generated successfully (HF)");
-
+    return NextResponse.json({ text });
+  } catch (err: any) {
+    console.error("[ERROR] generate-interview-questions", err);
     return NextResponse.json(
-      {
-        response: content,
-      },
-      { status: 200 },
-    );
-  } catch (error: any) {
-    console.error("🔥 HF ERROR:", error.message);
-    logger.error("Error generating interview questions (HF)");
-
-    return NextResponse.json(
-      {
-        error: error.message,
-      },
-      { status: 500 },
+      { error: err.message },
+      { status: 500 }
     );
   }
 }
