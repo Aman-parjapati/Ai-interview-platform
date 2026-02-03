@@ -141,24 +141,22 @@ function SummaryInfo({ responses, interview }: SummaryProps) {
         callCompletionCounter.partial += 1;
       }
 
-      const agentTaskCompletion =
-        response.details?.call_analysis?.agent_task_completion_rating;
-      if (
-        agentTaskCompletion === "Complete" ||
-        agentTaskCompletion === "Partial"
-      ) {
+      if (response.is_ended === true) {
         completedCount += 1;
       }
 
       totalDuration += response.duration;
-      if (
+
+      const status =
         Object.values(CandidateStatus).includes(
           response.candidate_status as CandidateStatus,
         )
-      ) {
-        statusCounter[response.candidate_status as CandidateStatus]++;
-      }
+          ? (response.candidate_status as CandidateStatus)
+          : CandidateStatus.NO_STATUS;
+
+      statusCounter[status]++;
     });
+
 
     setSentimentCount(sentimentCounter);
     setCallCompletion(callCompletionCounter);

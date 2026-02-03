@@ -85,17 +85,23 @@ function DetailsPopup({
       data,
     )) as any;
 
-    const generatedQuestionsResponse = JSON.parse(
-      generatedQuestions?.data?.response,
-    );
+    const rawResponse =
+      generatedQuestions?.data?.response || generatedQuestions?.data?.text;
 
-    const updatedQuestions = generatedQuestionsResponse.questions.map(
-      (question: Question) => ({
-        id: uuidv4(),
-        question: question.question.trim(),
-        follow_up_count: 1,
-      }),
-    );
+      const questionsArray = rawResponse
+        ? rawResponse
+            .split("\n")
+            .map((q: string) => q.replace(/^\d+[\).\s-]*/, "").trim())
+            .filter(Boolean)
+        : [];
+
+    const updatedQuestions = questionsArray.map((q: string) => ({
+      id: uuidv4(),
+      question: q,
+      follow_up_count: 1,
+    }));
+    
+
 
     const updatedInterviewData = {
       ...interviewData,
@@ -105,11 +111,13 @@ function DetailsPopup({
       interviewer_id: selectedInterviewer,
       question_count: Number(numQuestions),
       time_duration: duration,
-      description: generatedQuestionsResponse.description,
+      description: "", 
       is_anonymous: isAnonymous,
     };
     setInterviewData(updatedInterviewData);
-  };
+    setLoading(false);
+  }
+
 
   const onManual = () => {
     setLoading(true);
